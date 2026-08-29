@@ -29,10 +29,28 @@ PROVEEDORES = {
 }
 
 
+# Distintas APIs nombran los precios de forma distinta. Probamos varias
+# alternativas conocidas hasta encontrar una que tenga un valor numérico.
+CLAVES_COMPRA = ["compra", "buy", "bid", "compraAhorro"]
+CLAVES_VENTA = ["venta", "sell", "ask", "ventaAhorro"]
+
+
+def _primer_valor(item, claves):
+    for clave in claves:
+        valor = item.get(clave)
+        if valor is not None:
+            return valor
+    return None
+
+
 def obtener_cotizaciones():
     resp = requests.get(API_URL, timeout=15)
     resp.raise_for_status()
     data = resp.json()
+
+    # Algunas APIs devuelven una lista directamente, otras la anidan en "rates".
+    if isinstance(data, dict) and "rates" in data:
+        data = data["rates"]
 
     resultado = {}
     for clave, info in PROVEEDORES.items():
@@ -43,10 +61,11 @@ def obtener_cotizaciones():
                 encontrado = item
                 break
         if encontrado:
-            resultado[clave] = {
-                "compra": encontrado.get("compra"),
-                "venta": encontrado.get("venta"),
-            }
+            compra = _primer_valor(encontrado, CLAVES_COMPRA)
+            venta = _primer_valor(encontrado, CLAVES_VENTA)
+            resultado[clave] = {"compra": compra, "venta": venta}
+            if compra is None or venta is None:
+                print(f"⚠️  No se pudo leer compra/venta para '{clave}'. Item completo: {encontrado}")
         else:
             print(f"⚠️  No se encontró proveedor para '{clave}' en la respuesta de la API.")
     return resultado
