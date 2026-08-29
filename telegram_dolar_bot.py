@@ -43,6 +43,19 @@ def _primer_valor(item, claves):
     return None
 
 
+def a_numero(valor):
+    """Convierte compra/venta a float, soportando tanto números como strings
+    con coma decimal (formato argentino, ej: '1.540,00')."""
+    if valor is None:
+        return None
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    try:
+        return float(str(valor).replace(".", "").replace(",", "."))
+    except ValueError:
+        return None
+
+
 def obtener_cotizaciones():
     resp = requests.get(API_URL, timeout=15)
     resp.raise_for_status()
@@ -78,7 +91,8 @@ def cargar_estado():
     return {}
 
 
-def guardar_estado(estado):
+def guardar_estado(actual, diferencia):
+    estado = {"actual": actual, "diferencia": diferencia}
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(estado, f, indent=2, ensure_ascii=False)
 
@@ -90,10 +104,49 @@ def enviar_telegram(mensaje):
     r.raise_for_status()
 
 
+# Cuánto más barata es la venta para Supervielle Empleados respecto a la venta normal.
+DESCUENTO_EMPLEADOS = 19
+
+
+def calcular_derivados(actual):
+    """Calcula la cotización 'Supervielle Empleados' (venta normal - descuento)
+    y la diferencia entre esa venta y la compra de Fiwind."""
+    sup = actual.get("supervielle", {})
+    fw = actual.get("fiwind", {})
+
+    sup_venta = a_numero(sup.get("venta"))
+    sup_compra = sup.get("compra")  # se muestra igual, sin descuento
+
+    empleados_venta = None
+    if sup_venta is not None:
+        empleados_venta = round(sup_venta - DESCUENTO_EMPLEADOS, 2)
+
+    fw_compra = a_numero(fw.get("compra"))
+
+    diferencia = None
+    if empleados_venta is not None and fw_compra is not None:
+        diferencia = round(empleados_venta - fw_compra, 2)
+
+    return {"compra": sup_compra, "venta": empleados_venta}, diferencia
+
+
+def formatear_diferencia(diferencia):
+    if diferencia is None:
+        return "N/D"
+    signo = "+" if diferencia > 0 else ""
+    if diferencia > 0:
+        return f"💸🤑💸 <b>{signo}{diferencia:.2f}</b> 💸🤑💸"
+    if diferencia < 0:
+        return f"🔴🔽 <b>{diferencia:.2f}</b> 🔽🔴"
+    return f"⚪ <b>{diferencia:.2f}</b>"
+
+
 def formatear_mensaje(actual):
     fw = actual.get("fiwind", {})
     sup = actual.get("supervielle", {})
+    empleados, diferencia = calcular_derivados(actual)
     ahora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
     return (
         "🔔 <b>Cambio de cotización detectado</b>\n"
         f"🕒 {ahora}\n\n"
@@ -102,24 +155,39 @@ def formatear_mensaje(actual):
         f"  Venta: ${fw.get('venta', 'N/D')}\n\n"
         "🏦 <b>Banco Supervielle</b>\n"
         f"  Compra: ${sup.get('compra', 'N/D')}\n"
-        f"  Venta: ${sup.get('venta', 'N/D')}"
+        f"  Venta: ${sup.get('venta', 'N/D')}\n\n"
+        "🏦 <b>Supervielle Empleados</b>\n"
+        f"  Compra: ${empleados.get('compra', 'N/D')}\n"
+        f"  Venta: ${empleados.get('venta', 'N/D')}\n\n"
+        "📊 <b>Diferencia (Venta Supervielle Empleados − Compra Fiwind)</b>\n"
+        f"  {formatear_diferencia(diferencia)}"
     )
 
 
 def main():
-    anterior = cargar_estado()
+    estado_anterior = cargar_estado()
+    diferencia_anterior = estado_anterior.get("diferencia")
+
     actual = obtener_cotizaciones()
 
     if not actual:
         print("No se pudo obtener ninguna cotización en esta corrida. No se hace nada.")
         return
 
-    if actual != anterior:
+    _, diferencia = calcular_derivados(actual)
+
+    if diferencia is None:
+        print("⚠️  No se pudo calcular la Diferencia en esta corrida (faltan datos). No se envía mensaje.")
+        return
+
+    if diferencia != diferencia_anterior:
         enviar_telegram(formatear_mensaje(actual))
-        guardar_estado(actual)
-        print("✅ Cambio detectado -> mensaje enviado y estado actualizado.")
+        guardar_estado(actual, diferencia)
+        print(f"✅ Cambio en la Diferencia ({diferencia_anterior} -> {diferencia}) -> mensaje enviado.")
     else:
-        print("Sin cambios respecto a la última corrida.")
+        # Igual guardamos los valores crudos más recientes, sin disparar aviso.
+        guardar_estado(actual, diferencia)
+        print(f"Sin cambios en la Diferencia (sigue en {diferencia}).")
 
 
 if __name__ == "__main__":
