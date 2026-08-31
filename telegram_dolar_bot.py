@@ -12,8 +12,11 @@ Telegram con los valores y actualiza el archivo de estado.
 import json
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
+
+ZONA_ARGENTINA = ZoneInfo("America/Argentina/Buenos_Aires")
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -152,7 +155,7 @@ def formatear_mensaje(actual):
     fw = actual.get("fiwind", {})
     sup = actual.get("supervielle", {})
     empleados, diferencia = calcular_derivados(actual)
-    ahora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    ahora = datetime.now(ZONA_ARGENTINA).strftime("%d/%m/%Y %H:%M:%S")
 
     return (
         "🔔 <b>Cambio de cotización detectado</b>\n"
