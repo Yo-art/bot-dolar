@@ -5,8 +5,8 @@ Pensado para ejecutarse UNA VEZ por corrida (por ejemplo, disparado cada 10
 minutos por GitHub Actions). Cada vez que corre: consulta la API pública de
 ComparaDolar.ar, compara con el último valor guardado en
 "ultima_cotizacion.json", y si compra o venta cambiaron en Fiwind o en Banco
-Supervielle, manda un mensaje a Telegram con los 4 valores y actualiza el
-archivo de estado.
+Supervielle (o si cambió la Diferencia calculada), manda un mensaje a
+Telegram con los valores y actualiza el archivo de estado.
 """
 
 import json
@@ -105,29 +105,36 @@ def enviar_telegram(mensaje):
 
 
 # Cuánto más barata es la venta para Supervielle Empleados respecto a la venta normal.
-DESCUENTO_EMPLEADOS = 19
+DESCUENTO_EMPLEADOS_VENTA = 19
+
+# Cuánto se le suma a la compra normal de Supervielle para obtener la compra "Empleados".
+AJUSTE_EMPLEADOS_COMPRA = 16
 
 
 def calcular_derivados(actual):
-    """Calcula la cotización 'Supervielle Empleados' (venta normal - descuento)
-    y la diferencia entre esa venta y la compra de Fiwind."""
+    """Calcula la cotización 'Supervielle Empleados' (compra + ajuste, venta -
+    descuento) y la diferencia entre la compra de Fiwind y esa venta."""
     sup = actual.get("supervielle", {})
     fw = actual.get("fiwind", {})
 
     sup_venta = a_numero(sup.get("venta"))
-    sup_compra = sup.get("compra")  # se muestra igual, sin descuento
+    sup_compra = a_numero(sup.get("compra"))
 
     empleados_venta = None
     if sup_venta is not None:
-        empleados_venta = round(sup_venta - DESCUENTO_EMPLEADOS, 2)
+        empleados_venta = round(sup_venta - DESCUENTO_EMPLEADOS_VENTA, 2)
+
+    empleados_compra = None
+    if sup_compra is not None:
+        empleados_compra = round(sup_compra + AJUSTE_EMPLEADOS_COMPRA, 2)
 
     fw_compra = a_numero(fw.get("compra"))
 
     diferencia = None
     if empleados_venta is not None and fw_compra is not None:
-        diferencia = round(empleados_venta - fw_compra, 2)
+        diferencia = round(fw_compra - empleados_venta, 2)
 
-    return {"compra": sup_compra, "venta": empleados_venta}, diferencia
+    return {"compra": empleados_compra, "venta": empleados_venta}, diferencia
 
 
 def formatear_diferencia(diferencia):
@@ -159,7 +166,7 @@ def formatear_mensaje(actual):
         "🏦 <b>Supervielle Empleados</b>\n"
         f"  Compra: ${empleados.get('compra', 'N/D')}\n"
         f"  Venta: ${empleados.get('venta', 'N/D')}\n\n"
-        "📊 <b>Diferencia (Venta Supervielle Empleados − Compra Fiwind)</b>\n"
+        "📊 <b>Diferencia (Compra Fiwind − Venta Supervielle Empleados)</b>\n"
         f"  {formatear_diferencia(diferencia)}"
     )
 
@@ -167,6 +174,7 @@ def formatear_mensaje(actual):
 def main():
     estado_anterior = cargar_estado()
     diferencia_anterior = estado_anterior.get("diferencia")
+    actual_anterior = estado_anterior.get("actual")
 
     actual = obtener_cotizaciones()
 
@@ -180,14 +188,19 @@ def main():
         print("⚠️  No se pudo calcular la Diferencia en esta corrida (faltan datos). No se envía mensaje.")
         return
 
-    if diferencia != diferencia_anterior:
+    # Avisamos si cambiaron las cotizaciones crudas (Fiwind o Supervielle) O
+    # si cambió la Diferencia calculada. Esto evita que se "pierdan" avisos
+    # cuando compra y venta de Supervielle cambian pero la Diferencia final
+    # queda igual.
+    hubo_cambio = (actual != actual_anterior) or (diferencia != diferencia_anterior)
+
+    if hubo_cambio:
         enviar_telegram(formatear_mensaje(actual))
         guardar_estado(actual, diferencia)
-        print(f"✅ Cambio en la Diferencia ({diferencia_anterior} -> {diferencia}) -> mensaje enviado.")
+        print(f"✅ Cambio detectado (Diferencia: {diferencia_anterior} -> {diferencia}) -> mensaje enviado.")
     else:
-        # Igual guardamos los valores crudos más recientes, sin disparar aviso.
         guardar_estado(actual, diferencia)
-        print(f"Sin cambios en la Diferencia (sigue en {diferencia}).")
+        print(f"Sin cambios (Diferencia sigue en {diferencia}).")
 
 
 if __name__ == "__main__":
