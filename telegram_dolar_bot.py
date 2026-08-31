@@ -142,7 +142,7 @@ def formatear_diferencia(diferencia):
         return "N/D"
     signo = "+" if diferencia > 0 else ""
     if diferencia > 0:
-        return f"💸🤑💸 <b>{signo}{diferencia:.2f}</b> 💸🤑💸"
+        return f"🟢​🔼​ <b>{signo}{diferencia:.2f}</b> 🔼​🟢​"
     if diferencia < 0:
         return f"🔴🔽 <b>{diferencia:.2f}</b> 🔽🔴"
     return f"⚪ <b>{diferencia:.2f}</b>"
