@@ -5,9 +5,9 @@
       "venta": 1584.761906928571
     },
     "supervielle": {
-      "compra": 1524,
-      "venta": 1579
+      "compra": 1524.5,
+      "venta": 1579.5
     }
   },
-  "diferencia": 0.49
+  "diferencia": -0.01
 }
