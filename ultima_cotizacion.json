@@ -1,13 +1,13 @@
 {
   "actual": {
     "fiwind": {
-      "compra": 1563.9097736842104,
-      "venta": 1583.17580415879
+      "compra": 1556.594947801684,
+      "venta": 1580.18868
     },
     "supervielle": {
       "compra": 1522,
       "venta": 1577
     }
   },
-  "diferencia": 5.91
+  "diferencia": -1.41
 }
